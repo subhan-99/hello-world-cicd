@@ -1,9 +1,9 @@
+
 pipeline {
     agent any
 
     tools {
-        jdk 'Java21'
-        maven 'Maven3'
+        maven 'Maven-3'
     }
 
     triggers {
@@ -11,16 +11,24 @@ pipeline {
     }
 
     environment {
-        // Change this to the Tomcat EC2 private IP if it differs.
         APP_SERVER = '172.31.4.78'
         APP_USER = 'ubuntu'
         DEPLOY_DIR = '/var/lib/tomcat10/webapps'
+        WAR_NAME = 'hello-world.war'
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Checkout Code') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Check Java and Maven') {
+            steps {
+                sh 'java -version'
+                sh 'mvn -version'
             }
         }
 
@@ -31,12 +39,19 @@ pipeline {
             }
         }
 
-        stage('Deploy WAR') {
+        stage('Deploy to Tomcat') {
             steps {
                 sshagent(credentials: ['tomcat-ssh-key']) {
                     sh '''
-                        scp target/hello-world.war ${APP_USER}@${APP_SERVER}:/tmp/hello-world.war
-                        ssh ${APP_USER}@${APP_SERVER} "sudo install -o tomcat -g tomcat -m 0644 /tmp/hello-world.war ${DEPLOY_DIR}/hello-world.war"
+                        set -e
+
+                        scp target/${WAR_NAME} \
+                            ${APP_USER}@${APP_SERVER}:/tmp/${WAR_NAME}
+
+                        ssh ${APP_USER}@${APP_SERVER} \
+                            "sudo install -o tomcat -g tomcat -m 0644 \
+                            /tmp/${WAR_NAME} \
+                            ${DEPLOY_DIR}/${WAR_NAME}"
                     '''
                 }
             }
@@ -44,7 +59,13 @@ pipeline {
     }
 
     post {
-        success { echo 'WAR deployed successfully.' }
-        failure { echo 'Build/deployment failed. Check Console Output.' }
+        success {
+            echo 'SUCCESS: WAR deployed to Tomcat!'
+            echo 'URL: http://YOUR_TOMCAT_PUBLIC_IP:8080/hello-world/'
+        }
+
+        failure {
+            echo 'FAILED: Check the Jenkins Console Output.'
+        }
     }
 }
